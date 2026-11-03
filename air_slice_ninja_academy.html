@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AIR SLICE NINJA ACADEMY - Misi Snek Berkhasiat</title>
+
+  <!-- Google Fonts & FontAwesome -->
+  <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Orbitron:wght@700;900&family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- MediaPipe CDN Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0b0512;
+      font-family: 'Fredoka', sans-serif;
+      color: #ffffff;
+    }
+
+    /* Main Container */
+    #game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at center, #2a0845 0%, #0b0512 100%);
+      overflow: hidden;
+    }
+
+    /* Game Canvas for Rendering Slash FX & Fruit Slice Animation */
+    #game-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+    }
+
+    /* Hidden Video element for MediaPipe input */
+    #webcam-video {
+      display: none;
+    }
+
+    /* Webcam PiP (Picture in Picture) Window */
+    .webcam-pip {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      width: 160px;
+      height: 120px;
+      border-radius: 16px;
+      border: 3px solid #ff0055;
+      box-shadow: 0 0 15px rgba(255, 0, 85, 0.6);
+      overflow: hidden;
+      z-index: 20;
+      background: #000;
+    }
+
+    .webcam-pip canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* Mirror camera feed */
+    }
+
+    .webcam-status {
+      position: absolute;
+      bottom: 4px;
+      left: 0;
+      right: 0;
+      font-size: 10px;
+      font-family: 'Orbitron', sans-serif;
+      text-align: center;
+      background: rgba(0,0,0,0.7);
+      color: #00ffcc;
+      padding: 2px;
+    }
+
+    /* UI Overlay Layer */
+    .ui-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 15px;
+    }
+
+    .interactive {
+      pointer-events: auto !important;
+    }
+
+    /* Top Stats Bar */
+    .stats-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 12px 24px;
+      background: rgba(20, 10, 35, 0.85);
+      backdrop-filter: blur(8px);
+      border: 2px solid #ff0055;
+      border-radius: 50px;
+      box-shadow: 0 0 20px rgba(255, 0, 85, 0.4);
+    }
+
+    .stat-box {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.2rem;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stat-score { color: #ffee00; text-shadow: 0 0 10px rgba(255, 238, 0, 0.8); }
+    .stat-timer { color: #00f0ff; text-shadow: 0 0 10px rgba(0, 240, 255, 0.8); }
+    .stat-lives { color: #ff0055; font-size: 1.4rem; }
+
+    /* Question Banner */
+    .question-banner {
+      width: 100%;
+      max-width: 800px;
+      margin: 15px auto 0 auto;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, rgba(255, 0, 85, 0.9), rgba(120, 0, 255, 0.9));
+      border: 3px solid #ffee00;
+      border-radius: 20px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 15px rgba(255, 238, 0, 0.4);
+      animation: bannerPulse 2s infinite alternate;
+    }
+
+    @keyframes bannerPulse {
+      0% { transform: scale(0.99); }
+      100% { transform: scale(1.01); }
+    }
+
+    .question-title {
+      font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+      font-weight: 700;
+      color: #ffffff;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+    }
+
+    /* Start / Instructions Screen */
+    .screen-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at center, rgba(42, 8, 69, 0.95) 0%, rgba(11, 5, 18, 0.98) 100%);
+      padding: 20px;
+      text-align: center;
+    }
+
+    .game-logo {
+      font-family: 'Permanent Marker', cursive;
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      color: #ffee00;
+      text-shadow: 4px 4px 0px #ff0055, 8px 8px 0px #000;
+      letter-spacing: 2px;
+      line-height: 1;
+      transform: rotate(-2deg);
+      margin-bottom: 10px;
+    }
+
+    .game-sub {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.1rem, 2.5vw, 1.8rem);
+      color: #00f0ff;
+      text-shadow: 0 0 15px rgba(0, 240, 255, 0.8);
+      margin-bottom: 25px;
+      letter-spacing: 3px;
+    }
+
+    .instructions-card {
+      max-width: 600px;
+      width: 90%;
+      background: rgba(20, 10, 35, 0.85);
+      border: 2px solid #ff0055;
+      border-radius: 20px;
+      padding: 20px 25px;
+      margin-bottom: 25px;
+      text-align: left;
+      box-shadow: 0 0 25px rgba(255, 0, 85, 0.3);
+    }
+
+    .instruction-item {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 12px;
+      font-size: 1.05rem;
+    }
+
+    .instruction-icon {
+      width: 45px;
+      height: 45px;
+      border-radius: 12px;
+      background: rgba(255, 0, 85, 0.2);
+      border: 1px solid #ff0055;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      color: #ffee00;
+      flex-shrink: 0;
+    }
+
+    .btn-ninja {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.3rem;
+      font-weight: 900;
+      padding: 16px 40px;
+      border: none;
+      border-radius: 50px;
+      background: linear-gradient(135deg, #ff0055 0%, #ff5500 100%);
+      color: #ffffff;
+      cursor: pointer;
+      box-shadow: 0 0 25px rgba(255, 0, 85, 0.8), 0 6px 0px #990033;
+      transition: all 0.15s ease;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .btn-ninja:hover {
+      transform: translateY(-3px) scale(1.05);
+      box-shadow: 0 0 35px rgba(255, 0, 85, 1), 0 9px 0px #990033;
+    }
+
+    .btn-ninja:active {
+      transform: translateY(3px) scale(0.98);
+      box-shadow: 0 0 15px rgba(255, 0, 85, 0.6), 0 3px 0px #990033;
+    }
+
+    /* Feedback Flash Notification */
+    #feedback-popup {
+      position: absolute;
+      top: 45%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      font-family: 'Permanent Marker', cursive;
+      font-size: 3.5rem;
+      z-index: 25;
+      pointer-events: none;
+      transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      text-shadow: 4px 4px 0px #000;
+    }
+
+    .feedback-correct {
+      color: #00ff66;
+      text-shadow: 0 0 25px rgba(0, 255, 102, 0.9), 4px 4px 0px #000;
+    }
+
+    .feedback-wrong {
+      color: #ff0055;
+      text-shadow: 0 0 25px rgba(255, 0, 85, 0.9), 4px 4px 0px #000;
+    }
+
+    /* Mode Badge Indicator */
+    .control-mode-tag {
+      font-size: 0.85rem;
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid #00f0ff;
+      color: #00f0ff;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-top: 10px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="game-container">
+
+    <!-- Game Canvas for Slash Trails and Target Fruit Bubbles -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Hidden Video Element for MediaPipe Camera Utility -->
+    <video id="webcam-video" playsinline></video>
+
+    <!-- Webcam Live PiP Preview Box -->
+    <div class="webcam-pip">
+      <canvas id="webcam-pip-canvas"></canvas>
+      <div id="webcam-status-text" class="webcam-status">WEBCAM: CONNECTING...</div>
+    </div>
+
+    <!-- UI Overlay -->
+    <div class="ui-layer">
+      <!-- HUD Top Bar -->
+      <div>
+        <div class="stats-bar">
+          <div class="stat-box stat-score"><i class="fas fa-trophy"></i> SKOR: <span id="hud-score">0</span></div>
+          <div class="stat-box stat-timer"><i class="fas fa-stopwatch"></i> <span id="hud-timer">20</span>s</div>
+          <div class="stat-box stat-lives" id="hud-lives">❤️❤️❤️</div>
+        </div>
+
+        <!-- Question Display -->
+        <div class="question-banner">
+          <div id="hud-question" class="question-title">MEMUATKAN SOALAN...</div>
+        </div>
+      </div>
+
+      <div style="text-align: center; padding-bottom: 10px;">
+        <span id="control-mode-text" class="control-mode-tag"><i class="fas fa-hand-pointer"></i> TEBAS JARI / TETIKUS / SENTUHAN DITERIMA</span>
+      </div>
+    </div>
+
+    <!-- Feedback Popup -->
+    <div id="feedback-popup">TAHNIAH!</div>
+
+    <!-- Start / Instructions Screen -->
+    <div id="start-screen" class="screen-overlay interactive">
+      <div class="game-logo">AIR SLICE NINJA ACADEMY</div>
+      <div class="game-sub">TEBAS JAWAPAN BERKHASIAT!</div>
+
+      <div class="instructions-card">
+        <div class="instruction-item">
+          <div class="instruction-icon"><i class="fas fa-hand-point-up"></i></div>
+          <div><strong>Gaya Bebas Ninja:</strong> Tunjukkan <b>Jari Telunjuk</b> di depan webcam atau guna <b>Sentuhan/Tetikus</b> untuk menebas!</div>
+        </div>
+        <div class="instruction-item">
+          <div class="instruction-icon"><i class="fas fa-apple-alt"></i></div>
+          <div><strong>Tebas Jawapan Betul:</strong> Potong buah/snek jawapan yang tepat untuk mendapat markah!</div>
+        </div>
+        <div class="instruction-item">
+          <div class="instruction-icon"><i class="fas fa-bolt"></i></div>
+          <div><strong>Pantas & Ketat:</strong> Tebas jawapan tepat sebelum masa 20s tamat. Jauhi snek tidak sihat!</div>
+        </div>
+      </div>
+
+      <button class="btn-ninja" onclick="startGame()"><i class="fas fa-play"></i> MULA PERMAINAN</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="end-screen" class="screen-overlay interactive" style="display: none;">
+      <div class="game-logo" style="font-size: 3.5rem;">MISI SELESAI!</div>
+      <div id="end-rank" class="game-sub" style="color: #ffee00;">GELARAN: MASTER NINJA</div>
+
+      <div class="instructions-card" style="text-align: center;">
+        <div style="font-size: 1.2rem; color: #cbd5e1; margin-bottom: 10px;">JUMLAH SKOR AKHIR</div>
+        <div id="end-score" style="font-family: 'Orbitron'; font-size: 3.5rem; font-weight: 900; color: #ffee00; text-shadow: 0 0 20px rgba(255,238,0,0.8); margin-bottom: 15px;">100</div>
+
+        <div style="display: flex; justify-content: center; gap: 20px; font-size: 1.1rem;">
+          <div><i class="fas fa-check-circle" style="color: #00ff66;"></i> Betul: <strong id="end-correct">0</strong></div>
+          <div><i class="fas fa-times-circle" style="color: #ff0055;"></i> Salah: <strong id="end-wrong">0</strong></div>
+        </div>
+      </div>
+
+      <button class="btn-ninja" onclick="restartGame()"><i class="fas fa-redo"></i> MAIN SEMULA</button>
+    </div>
+
+  </div>
+
+  <script>
+    /* --- SOALAN PEMAKANAN SIHAT & SNEK BERKHASIAT --- */
+    const questionsDB = [
+      {
+        q: "Manakah antara berikut snek berkhasiat daripada buah-buahan?",
+        choices: [
+          { text: "Epal", icon: "🍎", correct: true },
+          { text: "Gula-gula", icon: "🍬", correct: false },
+          { text: "Ais Krim", icon: "🍦", correct: false }
+        ]
+      },
+      {
+        q: "Pilih produk tenusu yang sihat untuk dijadikan snek:",
+        choices: [
+          { text: "Minuman Berkarbonat", icon: "🥤", correct: false },
+          { text: "Yogurt Kurang Gula", icon: "🥛", correct: true },
+          { text: "Gula-gula Getah", icon: "🍫", correct: false }
+        ]
+      },
+      {
+        q: "Snek manakah yang membekalkan serat dan tenaga kompleks?",
+        choices: [
+          { text: "Roti Bijirin Penuh", icon: "🍞", correct: true },
+          { text: "Keropok Asin", icon: "🍟", correct: false },
+          { text: "Donut Manis", icon: "🍩", correct: false }
+        ]
+      },
+      {
+        q: "Apakah minuman paling sesuai untuk menghidrat badan selepas bersukan?",
+        choices: [
+          { text: "Air Sirap", icon: "🧃", correct: false },
+          { text: "Air Kosong & Buah", icon: "🍉", correct: true },
+          { text: "Minuman Tenaga Tinggi Gula", icon: "🍾", correct: false }
+        ]
+      },
+      {
+        q: "Snek manakah yang perlu HADKAN pengambilannya?",
+        choices: [
+          { text: "Pisang", icon: "🍌", correct: false },
+          { text: "Oren", icon: "🍊", correct: false },
+          { text: "Gula-gula Berperisa", icon: "🍭", correct: true }
+        ]
+      },
+      {
+        q: "Pilih contoh snek semula jadi berasaskan tumbuhan:",
+        choices: [
+          { text: "Jagung Rebus", icon: "🌽", correct: true },
+          { text: "Kentang Goreng Tinggi Garam", icon: "🍟", correct: false },
+          { text: "Coklat Manis", icon: "🍫", correct: false }
+        ]
+      },
+      {
+        q: "Mengapakah kita digalakkan memilih snek berkhasiat?",
+        choices: [
+          { text: "Membekalkan Nutrien", icon: "💪", correct: true },
+          { text: "Merosakkan Gigi", icon: "🦷", correct: false },
+          { text: "Membuat Badan Cepat Letih", icon: "😴", correct: false }
+        ]
+      },
+      {
+        q: "Buah manakah kaya dengan Vitamin C?",
+        choices: [
+          { text: "Oren Segar", icon: "🍊", correct: true },
+          { text: "Ais Krim Soda", icon: "🍧", correct: false },
+          { text: "Kuki Coklat", icon: "🍪", correct: false }
+        ]
+      },
+      {
+        q: "Antara snek berikut, yang manakah mengandungi kandungan protein tinggi?",
+        choices: [
+          { text: "Telur Rebus", icon: "🥚", correct: true },
+          { text: "Gula-gula Kapas", icon: "🍥", correct: false },
+          { text: "Minuman Bergas", icon: "🥤", correct: false }
+        ]
+      },
+      {
+        q: "Apakah amalan pemakanan yang paling baik?",
+        choices: [
+          { text: "Pilih Snek Rendah Gula & Garam", icon: "🥗", correct: true },
+          { text: "Makan Gula-gula Setiap Hari", icon: "🍬", correct: false },
+          { text: "Elak Makan Buah", icon: "🚫", correct: false }
+        ]
+      }
+    ];
+
+    /* --- AUDIO SYNTHESIZER (Web Audio API) --- */
+    class SoundSystem {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+      }
+
+      playSlash() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      }
+
+      playCorrect() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.25);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      }
+
+      playWrong() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.linearRampToValueAtTime(110, now + 0.3);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      }
+    }
+
+    const sound = new SoundSystem();
+
+    /* --- GAME ENGINE & STATE --- */
+    let canvas, ctx;
+    let pipCanvas, pipCtx;
+    let videoElement;
+
+    let gameState = 'START'; // START, PLAYING, GAMEOVER
+    let score = 0;
+    let lives = 3;
+    let timer = 20;
+    let currentQIndex = 0;
+    let timerInterval = null;
+    let correctCount = 0;
+    let wrongCount = 0;
+
+    // Interactive Floating Targets
+    let floatingTargets = [];
+    let particles = [];
+    let slicedPieces = [];
+
+    // Slash Trail System
+    let slashTrail = []; // Array of points {x, y, time}
+    let isMouseDown = false;
+    let indexFingerPos = null; // {x, y} relative to canvas
+
+    // MediaPipe Hand Detection Setup
+    let handsDetector = null;
+    let cameraUtil = null;
+    let webcamActive = false;
+
+    function initGame() {
+      canvas = document.getElementById('game-canvas');
+      ctx = canvas.getContext('2d');
+
+      pipCanvas = document.getElementById('webcam-pip-canvas');
+      pipCtx = pipCanvas.getContext('2d');
+      videoElement = document.getElementById('webcam-video');
+
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // Fallback Mouse / Touch Event Listeners
+      canvas.addEventListener('mousedown', (e) => {
+        isMouseDown = true;
+        addSlashPoint(e.clientX, e.clientY);
+      });
+
+      canvas.addEventListener('mousemove', (e) => {
+        if (isMouseDown || !webcamActive) {
+          addSlashPoint(e.clientX, e.clientY);
+        }
+      });
+
+      canvas.addEventListener('mouseup', () => { isMouseDown = false; });
+
+      canvas.addEventListener('touchstart', (e) => {
+        isMouseDown = true;
+        if (e.touches.length > 0) {
+          addSlashPoint(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      });
+
+      canvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length > 0) {
+          addSlashPoint(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      });
+
+      canvas.addEventListener('touchend', () => { isMouseDown = false; });
+
+      // Init MediaPipe Hands Tracking
+      initMediaPipe();
+
+      // Render loop
+      requestAnimationFrame(gameLoop);
+    }
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      pipCanvas.width = 160;
+      pipCanvas.height = 120;
+    }
+
+    /* MediaPipe Setup */
+    function initMediaPipe() {
+      if (typeof Hands === 'undefined') {
+        document.getElementById('webcam-status-text').innerText = "MOUSE/TOUCH MODE ACTIVE";
+        return;
+      }
+
+      handsDetector = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      handsDetector.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+      });
+
+      handsDetector.onResults(onHandResults);
+
+      if (typeof Camera !== 'undefined') {
+        cameraUtil = new Camera(videoElement, {
+          onFrame: async () => {
+            await handsDetector.send({ image: videoElement });
+          },
+          width: 640,
+          height: 480
+        });
+
+        cameraUtil.start().then(() => {
+          webcamActive = true;
+          document.getElementById('webcam-status-text').innerText = "WEBCAM READY";
+        }).catch(() => {
+          document.getElementById('webcam-status-text').innerText = "MOUSE/TOUCH MODE";
+        });
+      }
+    }
+
+    /* Process Hand Landmarks */
+    function onHandResults(results) {
+      // Draw live PiP preview
+      pipCtx.save();
+      pipCtx.clearRect(0, 0, pipCanvas.width, pipCanvas.height);
+      pipCtx.drawImage(results.image, 0, 0, pipCanvas.width, pipCanvas.height);
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+        
+        // Landmark 8 is INDEX_FINGER_TIP
+        const indexTip = landmarks[8];
+
+        // Draw index finger dot on PiP
+        pipCtx.fillStyle = '#ff0055';
+        pipCtx.beginPath();
+        pipCtx.arc(indexTip.x * pipCanvas.width, indexTip.y * pipCanvas.height, 6, 0, Math.PI * 2);
+        pipCtx.fill();
+
+        // Convert normalized coordinates to canvas space (Mirrored X)
+        const canvasX = (1 - indexTip.x) * canvas.width;
+        const canvasY = indexTip.y * canvas.height;
+
+        indexFingerPos = { x: canvasX, y: canvasY };
+        addSlashPoint(canvasX, canvasY);
+
+        document.getElementById('webcam-status-text').innerText = "JARI DIKESAN ✓";
+      } else {
+        document.getElementById('webcam-status-text').innerText = "WEBCAM: IMPIAN JARI";
+      }
+      pipCtx.restore();
+    }
+
+    function addSlashPoint(x, y) {
+      slashTrail.push({ x, y, time: Date.now() });
+      sound.playSlash();
+      checkSliceCollision(x, y);
+    }
+
+    /* Check Collision between Slash Line & Floating Target Bubbles */
+    function checkSliceCollision(x, y) {
+      if (gameState !== 'PLAYING') return;
+
+      floatingTargets.forEach(target => {
+        if (!target.sliced) {
+          const dist = Math.hypot(target.x - x, target.y - y);
+          if (dist < target.radius + 15) {
+            target.sliced = true;
+            onTargetSliced(target);
+          }
+        }
+      });
+    }
+
+    function onTargetSliced(target) {
+      // Create Sliced Explosive FX
+      createSliceFX(target.x, target.y, target.icon);
+
+      if (target.correct) {
+        score += 10;
+        correctCount++;
+        sound.playCorrect();
+        showFeedback("BETUL! +10", "feedback-correct");
+        setTimeout(nextQuestion, 800);
+      } else {
+        lives--;
+        wrongCount++;
+        sound.playWrong();
+        showFeedback("SALAH! -1 NYAWA", "feedback-wrong");
+        updateHUD();
+        if (lives <= 0) {
+          setTimeout(endGame, 800);
+        }
+      }
+      updateHUD();
+    }
+
+    function showFeedback(text, className) {
+      const fb = document.getElementById('feedback-popup');
+      fb.innerText = text;
+      fb.className = className;
+      fb.style.transform = 'translate(-50%, -50%) scale(1.2)';
+      setTimeout(() => {
+        fb.style.transform = 'translate(-50%, -50%) scale(0)';
+      }, 700);
+    }
+
+    /* Spawn Target Bubbles for Current Question */
+    function spawnQuestionTargets() {
+      floatingTargets = [];
+      const q = questionsDB[currentQIndex];
+      document.getElementById('hud-question').innerText = `Q${currentQIndex + 1}: ${q.q}`;
+
+      const count = q.choices.length;
+      const spacing = canvas.width / (count + 1);
+
+      q.choices.forEach((choice, idx) => {
+        const x = spacing * (idx + 1);
+        const y = canvas.height * 0.55 + (Math.random() * 40 - 20);
+
+        floatingTargets.push({
+          x: x,
+          y: y,
+          baseY: y,
+          radius: 65,
+          text: choice.text,
+          icon: choice.icon,
+          correct: choice.correct,
+          sliced: false,
+          floatOffset: Math.random() * Math.PI * 2
+        });
+      });
+
+      // Reset Question Timer to 20s
+      timer = 20;
+      updateHUD();
+    }
+
+    function nextQuestion() {
+      currentQIndex++;
+      if (currentQIndex < questionsDB.length && lives > 0) {
+        spawnQuestionTargets();
+      } else {
+        endGame();
+      }
+    }
+
+    function updateHUD() {
+      document.getElementById('hud-score').innerText = score;
+      document.getElementById('hud-timer').innerText = timer;
+      
+      let livesHearts = "";
+      for (let i = 0; i < 3; i++) {
+        livesHearts += (i < lives) ? "❤️" : "🖤";
+      }
+      document.getElementById('hud-lives').innerText = livesHearts;
+    }
+
+    /* FX & Particles Generator */
+    function createSliceFX(x, y, icon) {
+      // Split Floating Pieces
+      slicedPieces.push({
+        x: x - 15, y: y, vx: -4, vy: -5, rot: 0, vRot: -0.1, icon: icon, opacity: 1
+      });
+      slicedPieces.push({
+        x: x + 15, y: y, vx: 4, vy: -5, rot: 0, vRot: 0.1, icon: icon, opacity: 1
+      });
+
+      // Glowing Spark Particles
+      for (let i = 0; i < 15; i++) {
+        particles.push({
+          x: x, y: y,
+          vx: (Math.random() - 0.5) * 12,
+          vy: (Math.random() - 0.5) * 12,
+          color: Math.random() > 0.5 ? '#ff0055' : '#ffee00',
+          size: Math.random() * 6 + 3,
+          life: 1.0
+        });
+      }
+    }
+
+    /* Animation Game Loop */
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const now = Date.now();
+
+      // 1. Draw & Update Slash Trail (Neon Blade Effect)
+      slashTrail = slashTrail.filter(p => now - p.time < 200); // 200ms trail lifetime
+
+      if (slashTrail.length > 1) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Outer Glow Trail
+        ctx.strokeStyle = 'rgba(255, 0, 85, 0.8)';
+        ctx.lineWidth = 14;
+        ctx.shadowColor = '#ff0055';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.moveTo(slashTrail[0].x, slashTrail[0].y);
+        for (let i = 1; i < slashTrail.length; i++) {
+          ctx.lineTo(slashTrail[i].x, slashTrail[i].y);
+        }
+        ctx.stroke();
+
+        // Inner Core White Blade
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(slashTrail[0].x, slashTrail[0].y);
+        for (let i = 1; i < slashTrail.length; i++) {
+          ctx.lineTo(slashTrail[i].x, slashTrail[i].y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 2. Render & Animate Floating Target Fruit Bubbles
+      if (gameState === 'PLAYING') {
+        const timeOffset = now * 0.003;
+
+        floatingTargets.forEach(target => {
+          if (!target.sliced) {
+            target.y = target.baseY + Math.sin(timeOffset + target.floatOffset) * 15;
+
+            ctx.save();
+            ctx.translate(target.x, target.y);
+
+            // Outer Glowing Card Box
+            ctx.fillStyle = 'rgba(20, 10, 35, 0.85)';
+            ctx.strokeStyle = '#ff0055';
+            ctx.lineWidth = 3;
+            ctx.shadowColor = '#ff0055';
+            ctx.shadowBlur = 12;
+
+            ctx.beginPath();
+            ctx.roundRect(-target.radius - 20, -target.radius, (target.radius + 20) * 2, target.radius * 1.6, 16);
+            ctx.fill();
+            ctx.stroke();
+
+            // Fruit Emoji Icon
+            ctx.font = '42px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(target.icon, 0, -15);
+
+            // Answer Text Badge
+            ctx.font = 'bold 15px Fredoka, sans-serif';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(target.text, 0, 25);
+
+            ctx.restore();
+          }
+        });
+      }
+
+      // 3. Render Sliced Splitting Animations
+      slicedPieces.forEach((p, index) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.3; // Gravity
+        p.rot += p.vRot;
+        p.opacity -= 0.02;
+
+        if (p.opacity > 0) {
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.globalAlpha = Math.max(0, p.opacity);
+          ctx.font = '36px sans-serif';
+          ctx.fillText(p.icon, 0, 0);
+          ctx.restore();
+        } else {
+          slicedPieces.splice(index, 1);
+        }
+      });
+
+      // 4. Render Spark Particles
+      particles.forEach((pt, index) => {
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.life -= 0.04;
+
+        if (pt.life > 0) {
+          ctx.save();
+          ctx.fillStyle = pt.color;
+          ctx.globalAlpha = pt.life;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          particles.splice(index, 1);
+        }
+      });
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    /* Game Flow Logic */
+    function startGame() {
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('end-screen').style.display = 'none';
+      
+      score = 0;
+      lives = 3;
+      currentQIndex = 0;
+      correctCount = 0;
+      wrongCount = 0;
+
+      gameState = 'PLAYING';
+      spawnQuestionTargets();
+
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (gameState === 'PLAYING') {
+          timer--;
+          updateHUD();
+          if (timer <= 0) {
+            lives--;
+            sound.playWrong();
+            showFeedback("MASA TAMAT!", "feedback-wrong");
+            updateHUD();
+            if (lives <= 0) {
+              endGame();
+            } else {
+              nextQuestion();
+            }
+          }
+        }
+      }, 1000);
+    }
+
+    function endGame() {
+      gameState = 'GAMEOVER';
+      if (timerInterval) clearInterval(timerInterval);
+
+      document.getElementById('end-screen').style.display = 'flex';
+      document.getElementById('end-score').innerText = score;
+      document.getElementById('end-correct').innerText = correctCount;
+      document.getElementById('end-wrong').innerText = wrongCount;
+
+      let rank = "PELATIH NINJA";
+      if (score >= 80) rank = "MASTER NINJA SNEK 🥷✨";
+      else if (score >= 50) rank = "NINJA HEBAT ⚔️";
+      else if (score >= 30) rank = "PENGEMBARA NINJA 🍃";
+
+      document.getElementById('end-rank').innerText = `GELARAN: ${rank}`;
+    }
+
+    function restartGame() {
+      startGame();
+    }
+
+    window.onload = () => {
+      initGame();
+    };
+  </script>
+</body>
+</html>
